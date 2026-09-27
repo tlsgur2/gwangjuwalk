@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="ko"><head><meta charset="utf-8">
+<title>광주 대학가 안전시설 분포</title>
+<style>
+html,body{margin:0;height:100%;font-family:'Malgun Gothic',sans-serif}
+#map{width:100%;height:100%}
+#panel{position:absolute;top:14px;right:14px;z-index:100;background:#fff;
+ padding:14px 16px;border-radius:10px;box-shadow:0 2px 10px rgba(0,0,0,.25);font-size:13px}
+#panel h3{margin:0 0 10px;font-size:14px}
+#panel label{display:block;margin:6px 0;cursor:pointer}
+.dot{display:inline-block;width:11px;height:11px;border-radius:50%;margin:0 6px;vertical-align:middle}
+</style></head>
+<body>
+<div id="map"></div>
+<div id="panel">
+  <h3>안전시설 분포</h3>
+  <label><input type="checkbox" checked data-k="cctv"><span class="dot" style="background:#e74c3c"></span>CCTV <span id="n-cctv">-</span></label>
+  <label><input type="checkbox" checked data-k="bell"><span class="dot" style="background:#3498db"></span>안전비상벨 <span id="n-bell">-</span></label>
+  <label><input type="checkbox" checked data-k="police"><span class="dot" style="background:#2ecc71"></span>경찰서/지구대 <span id="n-police">-</span></label>
+</div>
+
+<script src="https://oapi.map.naver.com/openapi/v3/maps.js?ncpKeyId=3kxkmc6t4z"></script>
+<script>
+const COLOR = { cctv:'#e74c3c', bell:'#3498db', police:'#2ecc71' };
+const LABEL = { cctv:'CCTV', bell:'안전비상벨', police:'경찰서/지구대' };
+
+const map = new naver.maps.Map('map', {
+  center: new naver.maps.LatLng(35.1395, 126.9285),
+  zoom: 15
+});
+const info = new naver.maps.InfoWindow({ borderWidth: 0 });
+const store = {};
+
+function load(kind){
+  fetch(kind + '.geojson').then(r => r.json()).then(data => {
+    store[kind] = data.features.map(f => {
+      const [lng, lat] = f.geometry.coordinates;   // 경도, 위도 순서 주의
+      const p = f.properties;
+      const marker = new naver.maps.Marker({
+        position: new naver.maps.LatLng(lat, lng),
+        map: map,
+        icon: {
+          content: `<div style="width:12px;height:12px;background:${COLOR[kind]};
+                    border:2px solid #fff;border-radius:50%;
+                    box-shadow:0 0 3px rgba(0,0,0,.5)"></div>`,
+          anchor: new naver.maps.Point(6, 6)
+        }
+      });
+      naver.maps.Event.addListener(marker, 'click', () => {
+        // 경찰서 이름(p.name)이 있는 경우 팝업에 함께 출력되도록 처리
+        let titleHtml = `<b style="color:${COLOR[kind]}">${LABEL[kind]}</b><br>`;
+        if (p.name) { titleHtml += `<b>${p.name}</b><br>`; }
+
+        info.setContent(
+          `<div style="padding:10px 14px;font-size:13px;line-height:1.6">
+             ${titleHtml}${p.addr}<br>수량: ${p.cnt}<br>
+             <span style="color:#888">${lat.toFixed(6)}, ${lng.toFixed(6)}</span>
+           </div>`);
+        info.open(map, marker);
+      });
+      return marker;
+    });
+    document.getElementById('n-' + kind).textContent = '(' + store[kind].length + ')';
+  }).catch(e => console.error(kind, e));
+}
+
+// cctv, bell에 이어 police까지 불러오도록 설정
+['cctv', 'bell', 'police'].forEach(load);
+
+document.querySelectorAll('#panel input').forEach(cb => {
+  cb.onchange = e => {
+    const k = e.target.dataset.k;
+    (store[k] || []).forEach(m => m.setMap(e.target.checked ? map : null));
+  };
+});
+</script>
+</body></html>
