@@ -29,16 +29,34 @@ const map = new naver.maps.Map('map', {
   zoom: 15
 });
 const info = new naver.maps.InfoWindow({ borderWidth: 0 });
-const store = {};
+const store = {};                                   // 종류별 마커 목록
+const visible = { cctv: true, bell: true, police: true };  // 체크박스 상태
+
+// 켜져 있는 종류 중 "현재 화면 안"에 있는 마커만 지도에 올림
+function refresh() {
+  const bounds = map.getBounds();
+  for (const k in store) {
+    store[k].forEach(m => {
+      const show = visible[k] && bounds.hasLatLng(m.getPosition());
+      if (show !== !!m.getMap()) m.setMap(show ? map : null);
+    });
+  }
+}
 
 function load(kind){
   fetch(kind + '.geojson').then(r => r.json()).then(data => {
     store[kind] = data.features.map(f => {
       const [lng, lat] = f.geometry.coordinates;   // 경도, 위도 순서 주의
       const p = f.properties;
+
+      // 속성 키가 달라도(한글 키 포함) 읽을 수 있게 처리
+      const addr  = p.addr || p['소재지도로명주소'] || '';
+      const cnt   = p.cnt || p['수량'] || p.count || 1;
+      const place = p.place || p['설치위치'] || '';
+
       const marker = new naver.maps.Marker({
         position: new naver.maps.LatLng(lat, lng),
-        map: map,
+        // map은 지정하지 않음 (refresh()가 화면 안의 것만 올림)
         icon: {
           content: `<div style="width:12px;height:12px;background:${COLOR[kind]};
                     border:2px solid #fff;border-radius:50%;
@@ -46,14 +64,15 @@ function load(kind){
           anchor: new naver.maps.Point(6, 6)
         }
       });
+
       naver.maps.Event.addListener(marker, 'click', () => {
-        // 경찰서 이름(p.name)이 있는 경우 팝업에 함께 출력되도록 처리
         let titleHtml = `<b style="color:${COLOR[kind]}">${LABEL[kind]}</b><br>`;
-        if (p.name) { titleHtml += `<b>${p.name}</b><br>`; }
+        if (p.name)  titleHtml += `<b>${p.name}</b><br>`;
+        if (place)   titleHtml += `${place}<br>`;
 
         info.setContent(
           `<div style="padding:10px 14px;font-size:13px;line-height:1.6">
-             ${titleHtml}${p.addr}<br>수량: ${p.cnt}<br>
+             ${titleHtml}${addr}<br>수량: ${cnt}<br>
              <span style="color:#888">${lat.toFixed(6)}, ${lng.toFixed(6)}</span>
            </div>`);
         info.open(map, marker);
@@ -61,16 +80,19 @@ function load(kind){
       return marker;
     });
     document.getElementById('n-' + kind).textContent = '(' + store[kind].length + ')';
+    refresh();
   }).catch(e => console.error(kind, e));
 }
 
-// cctv, bell에 이어 police까지 불러오도록 설정
 ['cctv', 'bell', 'police'].forEach(load);
+
+// 지도 이동/줌이 끝나면 화면 안 마커만 다시 갱신
+naver.maps.Event.addListener(map, 'idle', refresh);
 
 document.querySelectorAll('#panel input').forEach(cb => {
   cb.onchange = e => {
-    const k = e.target.dataset.k;
-    (store[k] || []).forEach(m => m.setMap(e.target.checked ? map : null));
+    visible[e.target.dataset.k] = e.target.checked;
+    refresh();
   };
 });
 </script>
